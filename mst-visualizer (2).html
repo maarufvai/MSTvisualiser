@@ -1,0 +1,1418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MST Visualizer</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow:wght@300;400;600;700&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --node-fill: #1c2733;
+    --node-stroke: #58a6ff;
+    --edge-color: #484f58;
+    --mst-color: #f0c040;
+    --mst-edge: #22d3ee;
+    --mst-glow: rgba(34, 211, 238, 0.4);
+    --accent: #58a6ff;
+    --accent2: #3fb950;
+    --danger: #f85149;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --mono: 'Share Tech Mono', monospace;
+    --sans: 'Barlow', sans-serif;
+    --pending: #79c0ff;
+  }
+
+  html, body {
+    width: 100%; height: 100%; overflow: hidden;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+  }
+
+  #app {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    grid-template-rows: 52px 1fr;
+    height: 100vh;
+  }
+
+  /* TOOLBAR */
+  #toolbar {
+    grid-column: 1 / -1;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 8px;
+  }
+
+  #toolbar h1 {
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: #22d3ee;
+    margin-right: 24px;
+    white-space: nowrap;
+  }
+
+  .sep { width: 1px; height: 28px; background: var(--border); margin: 0 8px; }
+
+  .tool-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .5px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .tool-btn:hover { border-color: var(--accent); color: var(--text); }
+  .tool-btn.active { background: rgba(88,166,255,.12); border-color: var(--accent); color: var(--accent); }
+  .tool-btn.danger { color: var(--text-dim); }
+  .tool-btn.danger:hover, .tool-btn.danger.active { border-color: var(--danger); color: var(--danger); background: rgba(248,81,73,.1); }
+
+  .tool-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+  .hint {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    background: var(--bg);
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+  }
+
+  /* CANVAS */
+  #canvas-wrap {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+  canvas.mode-select { cursor: default; }
+  canvas.mode-delete { cursor: cell; }
+  canvas.cursor-pointer { cursor: pointer; }
+
+  /* dot grid */
+  #canvas-wrap::before {
+    content: '';
+    position: absolute; inset: 0;
+    background-image: radial-gradient(circle, #30363d 1px, transparent 1px);
+    background-size: 28px 28px;
+    pointer-events: none;
+    opacity: .5;
+  }
+
+  /* WEIGHT INPUT POPUP */
+  #weight-popup {
+    position: absolute;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 12px;
+    width: 180px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    z-index: 10;
+  }
+  #weight-popup label {
+    font-size: 11px; font-weight: 600; letter-spacing: 1px;
+    color: var(--text-dim); font-family: var(--mono);
+  }
+  #weight-popup input {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono); font-size: 16px;
+    padding: 6px 8px; border-radius: 4px; width: 100%;
+    text-align: center; outline: none;
+  }
+  #weight-popup input:focus { border-color: var(--accent); }
+  #weight-popup .pop-row { display: flex; gap: 6px; }
+  #weight-popup button {
+    flex: 1; padding: 6px; border-radius: 4px; border: none;
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: .15s;
+  }
+  #pop-ok { background: var(--accent); color: #0d1117; }
+  #pop-ok:hover { background: #79c0ff; }
+  #pop-cancel { background: var(--border); color: var(--text-dim); }
+  #pop-cancel:hover { background: #484f58; color: var(--text); }
+
+  /* PANEL */
+  #panel {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-section h2 {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; margin-bottom: 6px;
+  }
+  .stat-row span:first-child { color: var(--text-dim); }
+  .stat-val { font-family: var(--mono); font-size: 15px; color: var(--text); }
+
+  /* MST SECTION */
+  #mst-section { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  #mst-status {
+    padding: 12px 16px;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text-dim);
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+  }
+
+  #mst-badge {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(34,211,238,.06);
+    border-left: 3px solid #22d3ee;
+  }
+
+  #mst-badge .mst-weight {
+    font-family: var(--mono);
+    font-size: 22px;
+    color: var(--mst-color);
+    font-weight: 700;
+  }
+  #mst-badge .mst-label {
+    font-size: 11px; color: var(--text-dim); line-height: 1.4;
+  }
+
+  #mst-nav {
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+  #mst-nav h2 {
+    font-family: var(--mono);
+    font-size: 10px; letter-spacing: 2px;
+    color: var(--text-dim);
+  }
+  #mst-nav-row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .nav-btn {
+    width: 32px; height: 32px;
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: .15s; flex-shrink: 0;
+  }
+  .nav-btn:hover { border-color: var(--mst-color); color: var(--mst-color); }
+  .nav-btn:disabled { opacity: .3; cursor: default; }
+  .nav-btn:disabled:hover { border-color: var(--border); color: var(--text); }
+  #mst-counter {
+    flex: 1; text-align: center;
+    font-family: var(--mono); font-size: 13px;
+    color: var(--text);
+  }
+
+  #mst-edges-list {
+    flex: 1; overflow-y: auto;
+    padding: 8px 16px 16px;
+  }
+  #mst-edges-list::-webkit-scrollbar { width: 4px; }
+  #mst-edges-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .edge-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; border-radius: 4px;
+    font-family: var(--mono); font-size: 12px;
+    color: var(--text-dim); margin-bottom: 4px;
+    background: rgba(34,211,238,.05);
+    border: 1px solid rgba(34,211,238,.18);
+  }
+  .edge-item .ew { color: var(--mst-color); }
+
+  /* help */
+  #no-graph-msg {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 2;
+    font-family: var(--mono);
+    letter-spacing: 1px;
+  }
+  #no-graph-msg strong { color: var(--text); display: block; font-size: 18px; margin-bottom: 8px; }
+
+  /* UNDO TOAST */
+  #undo-toast {
+    position: absolute;
+    bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 16px;
+    border-radius: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+    white-space: nowrap;
+    z-index: 20;
+  }
+  #undo-toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* SAVE DIALOG */
+  #save-dialog-backdrop {
+    display: none;
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,.6);
+    z-index: 30;
+    align-items: center;
+    justify-content: center;
+  }
+  #save-dialog-backdrop.open { display: flex; }
+
+  #save-dialog {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    width: 320px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.7);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #save-dialog h3 {
+    font-family: var(--mono); font-size: 12px;
+    letter-spacing: 2px; color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  #save-dialog p {
+    font-size: 12px; color: var(--text-dim); line-height: 1.6;
+  }
+  #save-filename {
+    background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); font-family: var(--mono); font-size: 14px;
+    padding: 8px 10px; border-radius: 6px; width: 100%; outline: none;
+  }
+  #save-filename:focus { border-color: var(--accent2); }
+  .dialog-row { display: flex; gap: 8px; }
+  .dialog-row button {
+    flex: 1; padding: 8px; border-radius: 6px; border: none;
+    font-family: var(--sans); font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: .15s;
+  }
+  #save-confirm { background: var(--accent2); color: #0d1117; }
+  #save-confirm:hover { background: #56d364; }
+  #save-dialog-cancel { background: var(--border); color: var(--text-dim); }
+  #save-dialog-cancel:hover { background: #484f58; color: var(--text); }
+
+  /* file ext badge */
+  #filename-wrap { position: relative; }
+  #filename-ext {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 12px; color: var(--text-dim);
+    pointer-events: none;
+  }
+
+  /* LABEL EDIT POPUP */
+  #label-popup {
+    position: absolute;
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid #a78bfa;
+    border-radius: 8px;
+    padding: 12px;
+    width: 180px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    z-index: 10;
+  }
+  #label-popup label {
+    font-size: 11px; font-weight: 600; letter-spacing: 1px;
+    color: #a78bfa; font-family: var(--mono);
+  }
+  #label-popup input {
+    background: var(--bg); border: 1px solid #a78bfa;
+    color: var(--text); font-family: var(--mono); font-size: 16px;
+    padding: 6px 8px; border-radius: 4px; width: 100%;
+    text-align: center; outline: none;
+    text-transform: uppercase;
+  }
+  #label-popup input:focus { border-color: #c4b5fd; box-shadow: 0 0 0 2px rgba(167,139,250,.2); }
+  #label-popup .pop-row { display: flex; gap: 6px; }
+  #label-popup button {
+    flex: 1; padding: 6px; border-radius: 4px; border: none;
+    font-family: var(--sans); font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: .15s;
+  }
+  #lpop-ok { background: #7c3aed; color: #fff; }
+  #lpop-ok:hover { background: #a78bfa; }
+  #lpop-cancel { background: var(--border); color: var(--text-dim); }
+  #lpop-cancel:hover { background: #484f58; color: var(--text); }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- TOOLBAR -->
+  <div id="toolbar">
+    <h1>⬡ MST LAB</h1>
+    <div class="sep"></div>
+    <button class="tool-btn" id="btn-select" onclick="setMode('select')" title="Select / Move (V)">
+      <svg viewBox="0 0 24 24"><path d="M5 3l14 9-7 1-4 7z"/></svg> SELECT
+    </button>
+    <button class="tool-btn" id="btn-node" onclick="setMode('addNode')" title="Add Node (N)">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg> ADD NODE
+    </button>
+    <button class="tool-btn" id="btn-edge" onclick="setMode('addEdge')" title="Add Edge (E)">
+      <svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><line x1="9" y1="9" x2="15" y2="15"/></svg> ADD EDGE
+    </button>
+    <button class="tool-btn danger" id="btn-delete" onclick="setMode('delete')" title="Delete (D)">
+      <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/></svg> DELETE
+    </button>
+    <div class="sep"></div>
+    <button class="tool-btn" onclick="clearAll()" title="Clear graph">
+      <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg> CLEAR
+    </button>
+    <div class="sep"></div>
+    <button class="tool-btn" id="btn-undo" onclick="undo()" title="Undo (Ctrl+Z)">
+      <svg viewBox="0 0 24 24"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg> UNDO
+    </button>
+    <div class="sep"></div>
+    <button class="tool-btn" onclick="openSaveDialog()" title="Save graph to file (Ctrl+S)" style="color:var(--accent2);border-color:rgba(63,185,80,.35)">
+      <svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> SAVE
+    </button>
+    <button class="tool-btn" onclick="document.getElementById('file-input').click()" title="Open saved graph file">
+      <svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> OPEN
+    </button>
+    <input type="file" id="file-input" accept=".mstgraph,.json" style="display:none" onchange="loadGraphFile(event)">
+    <span class="hint" id="hint-text">Click canvas to add a node</span>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <canvas id="mainCanvas"></canvas>
+    <div id="no-graph-msg">
+      <strong>Graph is empty</strong>
+      Switch to <span style="color:var(--accent)">ADD NODE</span> mode and click to place nodes
+    </div>
+    <div id="undo-toast">↩ Undone</div>
+
+    <!-- SAVE DIALOG -->
+    <div id="save-dialog-backdrop">
+      <div id="save-dialog">
+        <h3>💾 Save Graph</h3>
+        <p>Name your file. Share the <strong style="color:var(--text)">.mstgraph</strong> file with anyone — they can open it directly in this app.</p>
+        <div id="filename-wrap">
+          <input type="text" id="save-filename" value="my-graph" spellcheck="false" maxlength="60">
+          <span id="filename-ext">.mstgraph</span>
+        </div>
+        <div class="dialog-row">
+          <button id="save-confirm" onclick="confirmSave()">⬇ Download</button>
+          <button id="save-dialog-cancel" onclick="closeSaveDialog()">Cancel</button>
+        </div>
+      </div>
+    </div>
+    <div id="weight-popup">
+      <label id="pop-label">EDGE WEIGHT</label>
+      <input type="number" id="weight-input" value="1" min="0" step="1">
+      <div class="pop-row">
+        <button id="pop-ok">OK</button>
+        <button id="pop-cancel">Cancel</button>
+      </div>
+    </div>
+    <div id="label-popup">
+      <label>NODE LABEL</label>
+      <input type="text" id="label-input" maxlength="4" spellcheck="false" placeholder="A">
+      <div class="pop-row">
+        <button id="lpop-ok">OK</button>
+        <button id="lpop-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL -->
+  <div id="panel">
+    <div class="panel-section">
+      <h2>Graph Info</h2>
+      <div class="stat-row"><span>Nodes</span><span class="stat-val" id="stat-nodes">0</span></div>
+      <div class="stat-row"><span>Edges</span><span class="stat-val" id="stat-edges">0</span></div>
+      <div class="stat-row" id="file-row" style="display:none">
+        <span>File</span>
+        <span class="stat-val" id="stat-filename" style="font-size:11px;color:var(--accent2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+      </div>
+    </div>
+
+    <div id="mst-section">
+      <div id="mst-badge">
+        <div>
+          <div class="mst-label">MINIMUM SPANNING TREE</div>
+          <div class="mst-weight" id="mst-weight-val">—</div>
+          <div class="mst-label">total weight</div>
+        </div>
+      </div>
+      <div id="mst-status">No graph to analyze.</div>
+
+      <div id="mst-edges-list"></div>
+
+      <div id="mst-nav">
+        <h2>Multiple Solutions</h2>
+        <div id="mst-nav-row">
+          <button class="nav-btn" id="nav-prev" onclick="prevMST()">‹</button>
+          <div id="mst-counter">—</div>
+          <button class="nav-btn" id="nav-next" onclick="nextMST()">›</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ──────────────────────────────────────────────────────────────────
+let nodes = [];
+let edges = [];
+let mode = 'addNode';
+let selectedNode = null;
+let selectedEdge = null;       // ← for keyboard delete & highlight
+let pendingEdgeSource = null;
+let draggingNode = null;
+let dragOffset = { x: 0, y: 0 };
+let allMSTs = [];
+let currentMSTIndex = 0;
+let nodeCounter = 0;
+let pendingEdge = null;
+let editingEdge = null;
+
+// ─── Undo history ─────────────────────────────────────────────────────────
+let undoHistory = [];
+
+function saveState() {
+  undoHistory.push({
+    nodes: JSON.parse(JSON.stringify(nodes)),
+    edges: JSON.parse(JSON.stringify(edges))
+  });
+  if (undoHistory.length > 100) undoHistory.shift();
+  document.getElementById('btn-undo').disabled = false;
+}
+
+function undo() {
+  if (!undoHistory.length) return;
+  const snap = undoHistory.pop();
+  nodes = snap.nodes;
+  edges = snap.edges;
+  selectedNode = null;
+  selectedEdge = null;
+  currentMSTIndex = 0;
+  document.getElementById('btn-undo').disabled = undoHistory.length === 0;
+  updateMST();
+  showUndoToast();
+}
+
+let _toastTimer = null;
+function showToast(msg) {
+  const t = document.getElementById('undo-toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+}
+function showUndoToast() { showToast('↩ Undone'); }
+
+// ─── Label hit areas (populated during draw) ──────────────────────────────
+let labelHitAreas = []; // [{edge, x, y, w, h}]
+let hoveredNode = null; // for pencil cursor hint
+
+// ─── Canvas Setup ─────────────────────────────────────────────────────────
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvas-wrap');
+
+function resize() {
+  canvas.width = wrap.clientWidth;
+  canvas.height = wrap.clientHeight;
+  draw();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ─── Mode ─────────────────────────────────────────────────────────────────
+const hints = {
+  select: 'Click to select · Drag to move nodes',
+  addNode: 'Click empty space to place a node',
+  addEdge: 'Click first node, then second to connect',
+  delete: 'Click a node or edge to remove it',
+};
+
+function setMode(m) {
+  mode = m;
+  pendingEdgeSource = null;
+  selectedNode = null;
+  selectedEdge = null;
+  document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('btn-' + (m === 'addNode' ? 'node' : m === 'addEdge' ? 'edge' : m)).classList.add('active');
+  canvas.className = 'mode-' + m;
+  document.getElementById('hint-text').textContent = hints[m];
+  draw();
+}
+setMode('addNode');
+document.getElementById('btn-undo').disabled = true;
+
+// ─── Node helpers ─────────────────────────────────────────────────────────
+const NODE_R = 22;
+const LABEL_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+function nextLabel() {
+  const n = nodes.length;
+  if (n < 26) return LABEL_CHARS[n];
+  return LABEL_CHARS[Math.floor(n / 26) - 1] + LABEL_CHARS[n % 26];
+}
+
+function nodeAt(x, y) {
+  return nodes.find(n => Math.hypot(n.x - x, n.y - y) <= NODE_R);
+}
+
+function edgeAt(x, y) {
+  for (const e of edges) {
+    const a = nodes.find(n => n.id === e.source);
+    const b = nodes.find(n => n.id === e.target);
+    if (!a || !b) continue;
+    const d = pointToSegDist(x, y, a.x, a.y, b.x, b.y);
+    if (d < 9) return e;
+  }
+  return null;
+}
+
+function pointToSegDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+// ─── MST Algorithm ────────────────────────────────────────────────────────
+class UnionFind {
+  constructor(n) {
+    this.p = Array.from({ length: n }, (_, i) => i);
+    this.r = new Array(n).fill(0);
+    this.c = n;
+  }
+  find(x) {
+    if (this.p[x] !== x) this.p[x] = this.find(this.p[x]);
+    return this.p[x];
+  }
+  union(x, y) {
+    const px = this.find(x), py = this.find(y);
+    if (px === py) return false;
+    if (this.r[px] < this.r[py]) this.p[px] = py;
+    else if (this.r[px] > this.r[py]) this.p[py] = px;
+    else { this.p[py] = px; this.r[px]++; }
+    this.c--;
+    return true;
+  }
+  copy() {
+    const c = new UnionFind(this.p.length);
+    c.p = [...this.p]; c.r = [...this.r]; c.c = this.c;
+    return c;
+  }
+  connected() { return this.c === 1; }
+}
+
+function computeAllMSTs() {
+  if (nodes.length < 2) return { msts: [], totalWeight: null, disconnected: nodes.length > 0 };
+
+  const idToIdx = {};
+  nodes.forEach((n, i) => idToIdx[n.id] = i);
+  const n = nodes.length;
+
+  const sorted = [...edges].sort((a, b) => a.weight - b.weight);
+
+  // Group by weight
+  const groups = [];
+  let i = 0;
+  while (i < sorted.length) {
+    let j = i;
+    while (j < sorted.length && sorted[j].weight === sorted[i].weight) j++;
+    groups.push(sorted.slice(i, j));
+    i = j;
+  }
+
+  // Run Kruskal's to find groupCounts
+  const uf0 = new UnionFind(n);
+  const groupCounts = groups.map(group => {
+    let count = 0;
+    for (const e of group) {
+      if (uf0.union(idToIdx[e.source], idToIdx[e.target])) count++;
+    }
+    return count;
+  });
+
+  if (!uf0.connected()) return { msts: [], totalWeight: null, disconnected: true };
+
+  const totalWeight = groups.reduce((s, g, i) => s + g[0].weight * groupCounts[i], 0);
+
+  // Enumerate all MSTs (limit to 100)
+  const LIMIT = 100;
+  const results = [];
+
+  function enumerate(gIdx, uf, chosen) {
+    if (results.length >= LIMIT) return;
+    if (gIdx === groups.length) {
+      if (uf.connected()) results.push([...chosen]);
+      return;
+    }
+    const group = groups[gIdx];
+    const needed = groupCounts[gIdx];
+    if (needed === 0) { enumerate(gIdx + 1, uf, chosen); return; }
+
+    function pick(idx, cnt, pickedEdges, ufState) {
+      if (results.length >= LIMIT) return;
+      if (cnt === needed) { enumerate(gIdx + 1, ufState, [...chosen, ...pickedEdges]); return; }
+      if (idx >= group.length) return;
+      if (group.length - idx < needed - cnt) return;
+
+      const e = group[idx];
+      const u = idToIdx[e.source], v = idToIdx[e.target];
+      if (ufState.find(u) !== ufState.find(v)) {
+        const ufCopy = ufState.copy();
+        ufCopy.union(u, v);
+        pick(idx + 1, cnt + 1, [...pickedEdges, e], ufCopy);
+      }
+      pick(idx + 1, cnt, pickedEdges, ufState);
+    }
+
+    pick(0, 0, [], uf);
+  }
+
+  enumerate(0, new UnionFind(n), []);
+  return { msts: results, totalWeight, disconnected: false };
+}
+
+function updateMST() {
+  const result = computeAllMSTs();
+  allMSTs = result.msts;
+  if (currentMSTIndex >= allMSTs.length) currentMSTIndex = 0;
+
+  const badge = document.getElementById('mst-badge');
+  const status = document.getElementById('mst-status');
+  const nav = document.getElementById('mst-nav');
+  const edgeList = document.getElementById('mst-edges-list');
+
+  badge.style.display = 'none';
+  nav.style.display = 'none';
+  edgeList.innerHTML = '';
+
+  if (nodes.length === 0) {
+    status.textContent = 'No graph to analyze.';
+  } else if (nodes.length === 1) {
+    status.textContent = 'Add more nodes and edges.';
+  } else if (result.disconnected) {
+    status.textContent = '⚠ Graph is not connected — MST requires a connected graph.';
+  } else if (allMSTs.length === 0) {
+    status.textContent = 'No spanning tree found.';
+  } else {
+    status.textContent = '';
+    badge.style.display = 'flex';
+    document.getElementById('mst-weight-val').textContent = result.totalWeight;
+
+    if (allMSTs.length > 1) {
+      nav.style.display = 'flex';
+      document.getElementById('mst-counter').textContent = `${currentMSTIndex + 1} / ${allMSTs.length}`;
+      document.getElementById('nav-prev').disabled = currentMSTIndex === 0;
+      document.getElementById('nav-next').disabled = currentMSTIndex === allMSTs.length - 1;
+    }
+
+    const mst = allMSTs[currentMSTIndex];
+    mst.forEach(e => {
+      const a = nodes.find(n => n.id === e.source);
+      const b = nodes.find(n => n.id === e.target);
+      if (!a || !b) return;
+      const div = document.createElement('div');
+      div.className = 'edge-item';
+      div.innerHTML = `<span>${a.label} — ${b.label}</span><span class="ew">w=${e.weight}</span>`;
+      edgeList.appendChild(div);
+    });
+  }
+
+  document.getElementById('stat-nodes').textContent = nodes.length;
+  document.getElementById('stat-edges').textContent = edges.length;
+  document.getElementById('no-graph-msg').style.display = nodes.length === 0 ? 'block' : 'none';
+  draw();
+}
+
+function prevMST() { if (currentMSTIndex > 0) { currentMSTIndex--; updateMST(); } }
+function nextMST() { if (currentMSTIndex < allMSTs.length - 1) { currentMSTIndex++; updateMST(); } }
+
+function labelAt(x, y) {
+  return labelHitAreas.find(l => x >= l.x && x <= l.x + l.w && y >= l.y && y <= l.y + l.h) || null;
+}
+
+// ─── Drawing ──────────────────────────────────────────────────────────────
+function draw() {
+  labelHitAreas = [];
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const mstEdgeIds = new Set();
+  if (allMSTs.length > 0 && currentMSTIndex < allMSTs.length) {
+    allMSTs[currentMSTIndex].forEach(e => mstEdgeIds.add(e.id));
+  }
+
+  // Draw edges
+  for (const e of edges) {
+    const a = nodes.find(n => n.id === e.source);
+    const b = nodes.find(n => n.id === e.target);
+    if (!a || !b) continue;
+    const isMST = mstEdgeIds.has(e.id);
+    drawEdge(a, b, e, isMST, e === pendingEdge, e === selectedEdge);
+  }
+
+  // Pending edge line (while connecting)
+  if (pendingEdgeSource && mode === 'addEdge') {
+    const src = pendingEdgeSource;
+    ctx.save();
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = 'rgba(88,166,255,.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(src.x, src.y);
+    ctx.lineTo(lastMouse.x, lastMouse.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Draw nodes
+  for (const n of nodes) {
+    const isPending = n === pendingEdgeSource;
+    drawNode(n, isPending, n === selectedNode, n === hoveredNode);
+  }
+}
+
+function drawEdge(a, b, edgeObj, isMST, isHovered, isSelected) {
+  const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+  const weight = edgeObj.weight;
+
+  ctx.save();
+  if (isSelected && !isMST) {
+    ctx.shadowColor = 'rgba(251,146,60,.7)';
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = '#fb923c';
+    ctx.lineWidth = 2.5;
+  } else if (isMST) {
+    ctx.shadowColor = 'rgba(34,211,238,.55)';
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = '#22d3ee';
+    ctx.lineWidth = 3;
+  } else {
+    ctx.strokeStyle = isHovered ? '#79c0ff' : '#3d444d';
+    ctx.lineWidth = 2;
+  }
+  ctx.beginPath();
+  ctx.moveTo(a.x, a.y);
+  ctx.lineTo(b.x, b.y);
+  ctx.stroke();
+  ctx.restore();
+
+  // Weight label pill — always solid opaque background so the edge line never bleeds through
+  const isEditHover = labelHitAreas._hovered === edgeObj;
+
+  // Offset pill perpendicularly away from the edge so it doesn't sit on the line
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const perpX = -dy / len, perpY = dx / len; // unit perpendicular
+  const OFFSET = 13; // px offset from line midpoint
+  const px0 = mx + perpX * OFFSET, py0 = my + perpY * OFFSET;
+
+  // Pick colours: solid bg always, vivid text, clear border
+  let borderColor, textColor, borderWidth;
+  if (isMST) {
+    borderColor = '#f0c040'; textColor = '#f0c040'; borderWidth = 1.5;
+  } else if (isSelected) {
+    borderColor = '#fb923c'; textColor = '#fb923c'; borderWidth = 1.5;
+  } else if (isEditHover) {
+    borderColor = '#58a6ff'; textColor = '#79c0ff'; borderWidth = 1;
+  } else {
+    borderColor = '#484f58'; textColor = '#c9d1d9'; borderWidth = 1;
+  }
+
+  const label = String(weight);
+  ctx.save();
+  ctx.font = 'bold 11px "Share Tech Mono"';
+  const tw = ctx.measureText(label).width;
+  const pw = tw + 14, ph = 20;
+  const lx = px0 - pw / 2, ly = py0 - ph / 2;
+
+  // store for hit-testing (use offset position)
+  labelHitAreas.push({ edge: edgeObj, x: lx, y: ly, w: pw, h: ph });
+
+  // Solid opaque fill — no glow bleed
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#111820';
+  ctx.strokeStyle = borderColor;
+  ctx.lineWidth = borderWidth;
+  roundRect(ctx, lx, ly, pw, ph, 5);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = textColor;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, px0, py0);
+  ctx.restore();
+}
+
+function drawNode(n, isPending, isSelected, isHovered) {
+  ctx.save();
+
+  const ring = isPending ? '#79c0ff' : isSelected ? '#58a6ff' : '#58a6ff';
+  const fill = '#1c2733';
+
+  if (isPending || isSelected) {
+    ctx.shadowColor = ring;
+    ctx.shadowBlur = 20;
+  }
+
+  ctx.beginPath();
+  ctx.arc(n.x, n.y, NODE_R, 0, Math.PI * 2);
+  ctx.fillStyle = fill;
+  ctx.fill();
+
+  ctx.lineWidth = isPending ? 2.5 : 1.5;
+  ctx.strokeStyle = ring;
+  if (isPending) ctx.setLineDash([4, 3]);
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#e6edf3';
+  ctx.font = `600 13px "Barlow"`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(n.label, n.x, n.y);
+
+  // Pencil hint badge on hover (double-click to edit)
+  if (isHovered && !isPending) {
+    const bx = n.x + NODE_R - 5, by = n.y - NODE_R + 5;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#a78bfa';
+    ctx.beginPath();
+    ctx.arc(bx, by, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('✎', bx, by + 0.5);
+  }
+
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+// ─── Mouse Events ─────────────────────────────────────────────────────────
+let lastMouse = { x: 0, y: 0 };
+
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / r.width;
+  const scaleY = canvas.height / r.height;
+  return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
+}
+
+canvas.addEventListener('mousemove', e => {
+  const pos = getPos(e);
+  lastMouse = pos;
+  if (draggingNode) {
+    draggingNode.x = pos.x + dragOffset.x;
+    draggingNode.y = pos.y + dragOffset.y;
+    updateMST();
+  } else if (pendingEdgeSource && mode === 'addEdge') {
+    draw();
+  } else {
+    // Track hovered node for pencil hint
+    const hn = nodeAt(pos.x, pos.y);
+    const lh = labelAt(pos.x, pos.y);
+    const prevHN = hoveredNode;
+    const prevLH = labelHitAreas._hovered;
+    hoveredNode = (hn && mode !== 'delete') ? hn : null;
+    labelHitAreas._hovered = lh ? lh.edge : null;
+    if (prevHN !== hoveredNode || prevLH !== labelHitAreas._hovered) draw();
+    canvas.style.cursor = (hn && mode !== 'delete') ? 'pointer' : lh ? 'pointer' : '';
+  }
+});
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const pos = getPos(e);
+  const hit = nodeAt(pos.x, pos.y);
+
+  // Always allow clicking weight labels to edit (any mode except delete)
+  if (mode !== 'delete') {
+    const lhit = labelAt(pos.x, pos.y);
+    if (lhit && !hit) {
+      showEditWeightPopup(pos, lhit.edge);
+      return;
+    }
+  }
+
+  if (mode === 'select') {
+    if (hit) {
+      selectedNode = hit;
+      selectedEdge = null;
+      draggingNode = hit;
+      dragOffset = { x: hit.x - pos.x, y: hit.y - pos.y };
+    } else {
+      const eHit = edgeAt(pos.x, pos.y);
+      if (eHit) {
+        selectedEdge = eHit;
+        selectedNode = null;
+      } else {
+        selectedNode = null;
+        selectedEdge = null;
+      }
+    }
+    draw();
+    return;
+  }
+
+  if (mode === 'addNode') {
+    if (!hit) {
+      saveState();
+      nodes.push({ id: Date.now() + Math.random(), label: nextLabel(), x: pos.x, y: pos.y });
+      currentMSTIndex = 0;
+      updateMST();
+    }
+    return;
+  }
+
+  if (mode === 'addEdge') {
+    if (hit) {
+      if (!pendingEdgeSource) {
+        pendingEdgeSource = hit;
+        draw();
+      } else {
+        if (hit !== pendingEdgeSource) {
+          // Check no duplicate edge
+          const dup = edges.find(ex =>
+            (ex.source === pendingEdgeSource.id && ex.target === hit.id) ||
+            (ex.source === hit.id && ex.target === pendingEdgeSource.id)
+          );
+          if (!dup) {
+            showWeightPopup(pos, pendingEdgeSource, hit);
+          }
+          pendingEdgeSource = null;
+        } else {
+          pendingEdgeSource = null;
+        }
+        draw();
+      }
+    } else {
+      pendingEdgeSource = null;
+      draw();
+    }
+    return;
+  }
+
+  if (mode === 'delete') {
+    if (hit) {
+      saveState();
+      edges = edges.filter(e => e.source !== hit.id && e.target !== hit.id);
+      nodes = nodes.filter(n => n !== hit);
+      nodes.forEach((n, i) => { n.label = i < 26 ? LABEL_CHARS[i] : LABEL_CHARS[Math.floor(i/26)-1]+LABEL_CHARS[i%26]; });
+      selectedNode = null; selectedEdge = null;
+      currentMSTIndex = 0;
+      updateMST();
+    } else {
+      const eHit = edgeAt(pos.x, pos.y);
+      if (eHit) {
+        saveState();
+        edges = edges.filter(ex => ex !== eHit);
+        selectedEdge = null;
+        currentMSTIndex = 0;
+        updateMST();
+      }
+    }
+    return;
+  }
+});
+
+canvas.addEventListener('mouseup', () => { draggingNode = null; });
+canvas.addEventListener('mouseleave', () => { draggingNode = null; hoveredNode = null; draw(); });
+
+// Double-click any node to edit its label (works in all modes except delete)
+canvas.addEventListener('dblclick', e => {
+  if (mode === 'delete') return;
+  const pos = getPos(e);
+  const hit = nodeAt(pos.x, pos.y);
+  if (hit) showLabelPopup(hit);
+});
+
+// ─── Weight Popup ─────────────────────────────────────────────────────────
+const popup = document.getElementById('weight-popup');
+const weightInput = document.getElementById('weight-input');
+const popLabel = document.getElementById('pop-label');
+
+let popupMode = 'new'; // 'new' | 'edit'
+
+function showWeightPopup(pos, src, tgt) {
+  popupMode = 'new';
+  pendingEdge = { source: src, target: tgt };
+  editingEdge = null;
+  popLabel.textContent = 'EDGE WEIGHT';
+  _placePopup(src.x, src.y, tgt.x, tgt.y);
+  weightInput.value = 1;
+  weightInput.focus();
+  weightInput.select();
+}
+
+function showEditWeightPopup(pos, edge) {
+  popupMode = 'edit';
+  editingEdge = edge;
+  pendingEdge = null;
+  popLabel.textContent = 'EDIT WEIGHT';
+  const srcNode = nodes.find(n => n.id === edge.source);
+  const tgtNode = nodes.find(n => n.id === edge.target);
+  if (srcNode && tgtNode) _placePopup(srcNode.x, srcNode.y, tgtNode.x, tgtNode.y);
+  else _placePopup(pos.x, pos.y, pos.x, pos.y);
+  weightInput.value = edge.weight;
+  weightInput.focus();
+  weightInput.select();
+}
+
+function _placePopup(x1, y1, x2, y2) {
+  const r = canvas.getBoundingClientRect();
+  const scaleX = r.width / canvas.width;
+  const scaleY = r.height / canvas.height;
+  const mx = (x1 + x2) / 2 * scaleX;
+  const my = (y1 + y2) / 2 * scaleY;
+  const wrapR = wrap.getBoundingClientRect();
+  let px = mx - 90, py = my - 65;
+  px = Math.max(0, Math.min(px, wrapR.width - 190));
+  py = Math.max(0, Math.min(py, wrapR.height - 130));
+  popup.style.left = px + 'px';
+  popup.style.top = py + 'px';
+  popup.style.display = 'flex';
+}
+
+function confirmEdge() {
+  const w = parseFloat(weightInput.value);
+  if (isNaN(w)) return;
+
+  if (popupMode === 'edit' && editingEdge) {
+    saveState();
+    editingEdge.weight = w;
+    editingEdge = null;
+  } else if (popupMode === 'new' && pendingEdge) {
+    saveState();
+    edges.push({
+      id: Date.now() + Math.random(),
+      source: pendingEdge.source.id,
+      target: pendingEdge.target.id,
+      weight: w
+    });
+    pendingEdge = null;
+  }
+  popup.style.display = 'none';
+  currentMSTIndex = 0;
+  updateMST();
+}
+
+function cancelEdge() {
+  pendingEdge = null;
+  editingEdge = null;
+  popup.style.display = 'none';
+  draw();
+}
+
+document.getElementById('pop-ok').onclick = confirmEdge;
+document.getElementById('pop-cancel').onclick = cancelEdge;
+weightInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmEdge();
+  if (e.key === 'Escape') cancelEdge();
+});
+
+// ─── Label Popup ──────────────────────────────────────────────────────────
+const labelPopup = document.getElementById('label-popup');
+const labelInput = document.getElementById('label-input');
+let editingNode = null;
+
+function showLabelPopup(node) {
+  editingNode = node;
+  labelInput.value = node.label;
+
+  // Position popup near the node
+  const r = canvas.getBoundingClientRect();
+  const scaleX = r.width / canvas.width;
+  const scaleY = r.height / canvas.height;
+  const nx = node.x * scaleX, ny = node.y * scaleY;
+  const wrapR = wrap.getBoundingClientRect();
+  let px = nx - 90, py = ny + 30;
+  px = Math.max(0, Math.min(px, wrapR.width - 190));
+  py = Math.max(0, Math.min(py, wrapR.height - 130));
+  labelPopup.style.left = px + 'px';
+  labelPopup.style.top = py + 'px';
+  labelPopup.style.display = 'flex';
+  labelInput.focus();
+  labelInput.select();
+}
+
+function confirmLabel() {
+  if (!editingNode) return;
+  const val = labelInput.value.trim();
+  if (!val) return;
+  saveState();
+  editingNode.label = val.toUpperCase().slice(0, 4);
+  editingNode = null;
+  labelPopup.style.display = 'none';
+  updateMST();
+}
+
+function cancelLabel() {
+  editingNode = null;
+  labelPopup.style.display = 'none';
+  draw();
+}
+
+document.getElementById('lpop-ok').onclick = confirmLabel;
+document.getElementById('lpop-cancel').onclick = cancelLabel;
+labelInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmLabel();
+  if (e.key === 'Escape') cancelLabel();
+});
+
+// ─── Keyboard Shortcuts ───────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+
+  // Undo
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault();
+    undo();
+    return;
+  }
+
+  // Delete selected node or edge
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (selectedNode) {
+      saveState();
+      edges = edges.filter(ex => ex.source !== selectedNode.id && ex.target !== selectedNode.id);
+      nodes = nodes.filter(n => n !== selectedNode);
+      nodes.forEach((n, i) => { n.label = i < 26 ? LABEL_CHARS[i] : LABEL_CHARS[Math.floor(i/26)-1]+LABEL_CHARS[i%26]; });
+      selectedNode = null;
+      currentMSTIndex = 0;
+      updateMST();
+    } else if (selectedEdge) {
+      saveState();
+      edges = edges.filter(ex => ex !== selectedEdge);
+      selectedEdge = null;
+      currentMSTIndex = 0;
+      updateMST();
+    }
+    return;
+  }
+
+  if (e.key === 'v' || e.key === 'V') setMode('select');
+  if (e.key === 'n' || e.key === 'N') setMode('addNode');
+  if (e.key === 'e' || e.key === 'E') setMode('addEdge');
+  if (e.key === 'd' || e.key === 'D') setMode('delete');
+  if (e.key === 'Escape') {
+    pendingEdgeSource = null;
+    popup.style.display = 'none';
+    labelPopup.style.display = 'none';
+    pendingEdge = null;
+    editingNode = null;
+    selectedNode = null;
+    selectedEdge = null;
+    draw();
+  }
+  if (e.key === 'ArrowLeft') prevMST();
+  if (e.key === 'ArrowRight') nextMST();
+});
+
+// ─── Save / Load ──────────────────────────────────────────────────────────
+let currentFileName = '';
+
+function openSaveDialog() {
+  const input = document.getElementById('save-filename');
+  input.value = currentFileName || 'my-graph';
+  // pad right so text doesn't overlap the ".mstgraph" ext badge
+  input.style.paddingRight = '90px';
+  document.getElementById('save-dialog-backdrop').classList.add('open');
+  input.focus();
+  input.select();
+}
+
+function closeSaveDialog() {
+  document.getElementById('save-dialog-backdrop').classList.remove('open');
+}
+
+function confirmSave() {
+  let name = document.getElementById('save-filename').value.trim() || 'my-graph';
+  // strip any extension the user may have typed
+  name = name.replace(/\.(mstgraph|json)$/i, '');
+  currentFileName = name;
+  _doSave(name);
+  closeSaveDialog();
+}
+
+function _doSave(name) {
+  const payload = {
+    _type: 'mstgraph',
+    _version: 1,
+    name,
+    savedAt: new Date().toISOString(),
+    nodes: nodes.map(n => ({ id: n.id, label: n.label, x: Math.round(n.x), y: Math.round(n.y) })),
+    edges: edges.map(e => ({ id: e.id, source: e.source, target: e.target, weight: e.weight }))
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name + '.mstgraph'; a.click();
+  URL.revokeObjectURL(url);
+  document.getElementById('stat-filename').textContent = name + '.mstgraph';
+  document.getElementById('file-row').style.display = 'flex';
+  showToast('💾 Saved — ' + name + '.mstgraph');
+}
+
+function loadGraphFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (!data.nodes || !data.edges) throw new Error('Invalid file');
+
+      saveState(); // allow undoing the load
+
+      // Scale node positions to current canvas if canvas size differs
+      // (positions are stored as absolute px — just use them directly)
+      nodes = data.nodes.map(n => ({ id: n.id, label: n.label, x: n.x, y: n.y }));
+      edges = data.edges.map(e => ({ id: e.id, source: e.source, target: e.target, weight: e.weight }));
+      currentMSTIndex = 0;
+      selectedNode = null; selectedEdge = null;
+
+      const fname = file.name.replace(/\.(mstgraph|json)$/i, '');
+      currentFileName = fname;
+      document.getElementById('stat-filename').textContent = file.name;
+      document.getElementById('file-row').style.display = 'flex';
+      updateMST();
+      showToast('📂 Opened — ' + file.name);
+    } catch(err) {
+      showToast('⚠ Could not read file');
+    }
+    // reset so the same file can be re-opened
+    event.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
+// Ctrl+S to save
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    openSaveDialog();
+  }
+});
+
+// Close save dialog on backdrop click
+document.getElementById('save-dialog-backdrop').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeSaveDialog();
+});
+
+// Confirm save on Enter
+document.getElementById('save-filename').addEventListener('keydown', e => {
+  if (e.key === 'Enter') confirmSave();
+  if (e.key === 'Escape') closeSaveDialog();
+});
+
+// ─── Clear ────────────────────────────────────────────────────────────────
+function clearAll() {
+  nodes = []; edges = []; allMSTs = []; currentMSTIndex = 0;
+  pendingEdgeSource = null; selectedNode = null; selectedEdge = null; draggingNode = null;
+  currentFileName = '';
+  document.getElementById('file-row').style.display = 'none';
+  updateMST();
+}
+
+// ─── Sample Graph ─────────────────────────────────────────────────────────
+(function seedGraph() {
+  saveState(); // allow undoing back to blank
+  const positions = [
+    { x: 0.25, y: 0.25 }, { x: 0.55, y: 0.18 }, { x: 0.75, y: 0.38 },
+    { x: 0.65, y: 0.62 }, { x: 0.35, y: 0.68 }, { x: 0.18, y: 0.5 }
+  ];
+  const W = wrap.clientWidth || 700, H = wrap.clientHeight || 500;
+  positions.forEach((p, i) => {
+    nodes.push({ id: i + 1, label: LABEL_CHARS[i], x: p.x * W, y: p.y * H });
+  });
+  const es = [
+    [1,2,4],[1,6,2],[2,3,6],[2,5,3],[3,4,6],[3,5,5],[4,5,8],[5,6,7],[4,6,9],[1,5,3]
+  ];
+  es.forEach(([s, t, w], i) => {
+    edges.push({ id: 100 + i, source: s, target: t, weight: w });
+  });
+  updateMST();
+})();
+</script>
+</body>
+</html>
